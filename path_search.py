@@ -1,10 +1,12 @@
 from pathnet_keras import PathNet
 import numpy as np
 import random
+import time
 
 class PathSearch:
     def __init__(self, pathnet):
         self.pathnet = pathnet
+        self.time_log = []
 
     def tournament_search(self, x, y, population_size=10, seasons=5):
         batch_size = 512
@@ -105,7 +107,7 @@ class PathSearch:
 
         return champion_path, fitness_history
 
-    def evolutionary_search(self, x, y, population_size=2, generations=2, clear_session_every=10):
+    def evolutionary_search(self, x, y, population_size=4, generations=2):
         batch_size = 512
         epochs = 1
         max_modules_pr_layer = 2
@@ -118,18 +120,9 @@ class PathSearch:
         for generation in range(1, generations+1):
             print('='*15, 'Generation ', generation, '/', generations, '='*15)
 
-            print(' '*5, '--- Building models from paths ---')
-            models = [self.pathnet.build_model_from_path(path) for path in population]
-            print()
-
             print(' ' * 5, '--- Evaluating fitness of', population_size, 'paths ---')
-            fitness, hist = self.evaluate(models, x, y, epochs, batch_size)
+            fitness, hist = self.evaluate(population, x, y, epochs, batch_size)
             history.append(hist)
-
-            if generation % clear_session_every == 0:
-                print(' ' * 5, '--- Reseting PathNet ---')
-                self.pathnet.reset_backend_session()
-
 
             population, fitness = self.sort_generation_by_fitness(population, fitness)
 
@@ -154,7 +147,6 @@ class PathSearch:
                     print()
             print()
 
-
             print(' ' * 5, '--- Recombination ---')
             new_population = self.simple_crossover(selected)
             for s in new_population:
@@ -168,11 +160,17 @@ class PathSearch:
 
         return population[0], history
 
-    def evaluate(self, models, x, y, epochs, batch_size):
+    def evaluate(self, population, x, y, epochs, batch_size):
         fitness = []
         history = []
-        for model in models:
+        for path in population:
+            t = time.time()
+
+            model = self.pathnet.path2model(path)
             hist = model.fit(x, y, epochs=epochs, validation_split=0.2, verbose=True, batch_size=batch_size)
+
+            self.time_log.append(time.time()-t / model.count_params())
+
             history.append(hist.history)
             fitness.append(hist.history['val_acc'][0])
 
@@ -265,8 +263,23 @@ class PathSearch:
         for p in population:
             N = max([len(x) for x in p])
             L = self.pathnet.depth
-            mutated.append(self.pathnet.mutate_path(p, mutation_prob=1/(N*L)))
+            mutated.append(self.mutate_path(p, mutation_prob=1/(N*L)))
         return mutated
+
+    def mutate_path(self, path, mutation_prob=0.1):
+        for layer in path.copy():
+            for i in range(len(layer)):
+                if np.random.uniform(0, 1) <= mutation_prob:
+                    layer[i] += np.random.randint(low=-2, high=2)
+                    if layer[i] < 0:
+                        layer[i] += self.pathnet.depth
+                    if layer[i] >= self.pathnet.depth:
+                        layer[i] -= self.pathnet.depth
+        for i in range(self.pathnet.depth):
+            path[i] = list(set(path[i]))
+            path[i] = sorted(path[i])
+
+        return path
 
     def sort_generation_by_fitness(self, population, fitness):
         fitness, population = zip(*list(reversed(sorted(list(zip(fitness, population))))))

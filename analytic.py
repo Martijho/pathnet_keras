@@ -1,8 +1,9 @@
 from matplotlib import pyplot as plt
 from pathnet_keras import PathNet
+from datetime import datetime
 import pickle as pkl
-
 import numpy as np
+
 
 class Analytic:
     def __init__(self, pathnet):
@@ -20,9 +21,10 @@ class Analytic:
     def process_evolution_run(self, history):
         history = self.history_list_to_dict(history)
         self.plot_history(history)
-        # TODO
-        # save history to file?
-        # load history from file?
+
+        now = datetime.now().date()
+        with open('logs/History - EA_search/evolutionary_run_'+str(now)+'.pkl', 'wb') as f:
+            pkl.dump(history, f)
 
     def plot_history(self, hist, lock=True):
         plt.figure()
@@ -103,3 +105,47 @@ class Analytic:
             print(modules_training_log)
             print('Average epochs trained on each module:', total/number_of_modules_in_path)
             print('\n')
+
+    def _is_module_trainable(self, layer, module):
+        prefix = 'L'+str(layer)+'M'+str(module)
+
+        for name, layer in self.pathnet._saved_layers.items():
+            if prefix in name:
+                return layer.trainable
+    def _module_size(self, layer, module):
+        prefix = 'L'+str(layer)+'M'+str(module)
+        counter = 0
+        for name, layer in self.pathnet._saved_layers.items():
+            if prefix in name:
+                counter+=1
+        return counter
+
+    def show_locked_modules(self):
+        pn = self.pathnet
+        print('='*20, 'Locked Modules', '='*20)
+        for m in range(pn.width):
+            print(end='\t')
+            for l in range(pn.depth):
+                if self._is_module_trainable(l, m):
+                    print('-'*self._module_size(l, m), end='   ')
+                else:
+                    print('X'*self._module_size(l, m), end='   ')
+            print()
+        print('='*56, end='\n\n')
+
+    def print_training_counter(self):
+        pn = self.pathnet
+        print('='*19, 'Training counter', '='*19)
+        for i in range(self.pathnet.width):
+            print(end='\t')
+            for j in range(self.pathnet.depth):
+                if self.pathnet.training_counter[j][i] == 0:
+                    print('-'.ljust(5), end='')
+                else:
+                    print(str(self.pathnet.training_counter[j][i]).ljust(5), end='')
+            print()
+        print('='*56, end ='\n\n')
+
+    def parameters_along_path(self, path):
+        model = self.pathnet.path2model(path)
+        return model.count_params()
