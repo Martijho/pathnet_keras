@@ -1,5 +1,5 @@
 from matplotlib import pyplot as plt
-from pathnet_keras import PathNet
+#from pathnet_keras import PathNet
 from datetime import datetime
 import pickle as pkl
 import numpy as np
@@ -22,7 +22,7 @@ class Analytic:
         history = self.history_list_to_dict(history)
         self.plot_history(history)
 
-        now = datetime.now().date()
+        now = datetime.now()
         with open('logs/History - EA_search/evolutionary_run_'+str(now)+'.pkl', 'wb') as f:
             pkl.dump(history, f)
 
@@ -149,3 +149,14 @@ class Analytic:
     def parameters_along_path(self, path):
         model = self.pathnet.path2model(path)
         return model.count_params()
+
+    def load_log(self):
+        with open('logs/History - EA_search/kept/evolutionary_run_2017-10-20.pkl', 'rb') as f:
+            log = pkl.load(f)
+        for k, v in log.items():
+            print(k)
+
+        self.plot_history(log)
+
+if __name__ == "__main__":
+    Analytic(None).load_log()

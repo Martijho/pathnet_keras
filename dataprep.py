@@ -1,4 +1,4 @@
-from keras.datasets import cifar10, mnist
+from keras.datasets import cifar10, cifar100, mnist
 from keras.utils import to_categorical
 import numpy as np
 import random
@@ -26,6 +26,27 @@ class DataPrep:
         self.input_shape = [32, 32, 3]
         self.output_size = 10
         (x_train, y_train), (x_test, y_test) = cifar10.load_data()
+        self.y_list = y_train
+        self.y_test_list = y_test
+
+        self.y = to_categorical(y_train, self.output_size)
+        self.y_test = to_categorical(y_test, self.output_size)
+
+        self.x = x_train.reshape([len(x_train), self.input_shape[0], self.input_shape[1], self.input_shape[2]])
+        self.x_test = x_test.reshape([len(x_test), self.input_shape[0], self.input_shape[1], self.input_shape[2]])
+
+        if train_size is not None:
+            self.x = self.x[:train_size]
+            self.y = self.y[:train_size]
+
+        if test_size is not None:
+            self.y_test = self.y_test[:test_size]
+            self.x_test = self.x_test[:test_size]
+
+    def cifar100(self, train_size=None, test_size=None):
+        self.input_shape = [32, 32, 3]
+        self.output_size = 100
+        (x_train, y_train), (x_test, y_test) = cifar100.load_data()
         self.y_list = y_train
         self.y_test_list = y_test
 

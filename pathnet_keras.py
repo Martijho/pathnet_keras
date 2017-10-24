@@ -1,10 +1,11 @@
+from pathnet_constructor import PathNetConstructor
 from keras.models import Model
 from keras.layers import Dense, Input, Conv2D, MaxPooling2D, Flatten, BatchNormalization
 from keras.layers.merge import add
-from keras.optimizers import Adagrad, Adam, RMSprop
+from keras.optimizers import Adagrad, Adam, RMSprop, SGD
 from keras.callbacks import TensorBoard
-from keras.models import model_from_json
 from keras import backend as K
+from datetime import datetime
 import numpy as np
 import pickle
 import os
@@ -14,28 +15,35 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 class PathNet:
-    def __init__(self, input_shape=None, output_size=1, width=-1, depth=-1, load_file=False, max_active_modules=75):
+    def __init__(self, input_shape=None, width=-1, depth=-1, load_file=False, max_active_modules=75):
         self._models_created_in_current_session = 0
         self.tbCallBack = TensorBoard(log_dir='./logs', histogram_freq=0, write_graph=True,write_images=True)
         self._max_active_modules = max_active_modules
+
         if load_file:
             self.load_pathnet()
             return
 
         self.optimal_paths = []
+        self.output_sizes = []
+        self.unique_classification_layer = []
+
         self.training_counter = [[0]*width for _ in range(depth)]
         self.depth = depth
         self.width = width
         self.input_shape = input_shape
-        self.output_size = output_size
+        self._saved_layers = None
 
-        self.dense_module_config = [{'out': output_size, 'activation': 'softmax'}]            # Add another dict to inc
-        self.conv_module_config = [{'channels': 8, 'kernel': (3,3), 'activation': 'relu'},
-                                   {'channels': 3, 'kernel': (3,3), 'activation': 'relu'},
+        #self._binary_mnist_test()
+        ''''
+        self.dense_module_config = [{'out': 20, 'activation': 'relu'}]            # Add another dict to inc
+        self.conv_module_config = [{'channels': 3, 'kernel': (5,5), 'activation': 'relu'},
                                    {'channels': 1, 'kernel': (3,3), 'activation': 'relu'}]     # Add another dict to inc
         self.conv_module_includes_batchnorm = True
 
-        self._init_whole_pathnet()
+
+        #self._init_whole_pathnet()
+        '''
 
     def _name(self, l, m, n, node_type):
         name = 'L'+str(l)+'M'+str(m)+node_type+str(n)
@@ -43,42 +51,60 @@ class PathNet:
             name = name[:-1*len(str(n))]
         return name
 
-    def _init_whole_pathnet(self):
+    def _binary_mnist_test(self):
+        self.dense_module_config = [{'out': 20, 'activation': 'relu'}]
+        self.depth = 3
+        self.width = 10
+        self.max_modules_pr_layer = 3
 
-        inp = Input(self.input_shape)
-        thread = inp
+        self.pathnet_dimentions = [1, 1, 1]
+        self.maxpool_placement = -1
+        self.flatten_placement = 0
 
-        for l in range(self.depth):
-            layer_outputs = []
-            for m in range(self.width):
-                node_thread = thread
-                if l == self.depth-1:
-                    layer_outputs.append(self._build_dense_module(l, m, node_thread))
-                else:
-                    layer_outputs.append(self._build_conv_module(l, m, node_thread))
+        self.learning_rate = 0.0001
+        self.optimizer_type = SGD
+        self.loss = 'categorical_crossentropy'
 
-            if len(layer_outputs) == 1:
-                thread = layer_outputs[0]
+        if self._saved_layers is None:
+            pnc = PathNetConstructor([28, 28, 1])
+            pnc.add_dense_layer(self.width, self.dense_module_config)
+            pnc.add_dense_layer(self.width, self.dense_module_config)
+            pnc.add_dense_layer(self.width, self.dense_module_config)
+
+            self._saved_layers, unique = pnc.get_layers_and_unique(2, 'binary_mnist_unique')
+            self._models_created_in_current_session += 1
+        else:
+            if 'L'+str(self.depth-1)+'M'+str(0) + 'D' + str(self.pathnet_dimentions[-1]-1) in self._saved_layers:
+                last_layer = self._saved_layers['L'+str(self.depth-1)+'M'+str(0)+'D'+str(self.pathnet_dimentions[-1]-1)]
+            elif 'L'+str(self.depth-1)+'M'+str(0)+'C'+str(self.pathnet_dimentions[-1]-1) in self._saved_layers:
+                last_layer = self._saved_layers['L'+str(self.depth-1)+'M'+str(0)+'C'+str(self.pathnet_dimentions[-1] - 1)]
             else:
-                thread = add(layer_outputs)
+                last_layer = self._saved_layers['L'+str(self.depth-1)+'M'+str(0) + 'BN']
 
-            if l == self.depth-2:
-                thread = MaxPooling2D((2, 2))(thread)
-                thread = Flatten()(thread)
+            tmp_inp = Input(last_layer.compute_output_shape([28, 28, 1]))
+            unique = Dense(2, activation='softmax', name='binary_mnist_unique')(tmp_inp)
+            tmp_model = Model(inputs=tmp_inp, outputs=unique)
+            tmp_model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
+            unique = tmp_model.get_layer('binary_mnist_unique')
+            self._models_created_in_current_session += 2
 
+        self.output_sizes.append(2)
+        self.unique_classification_layer.append(unique)
 
-        model = Model(inputs=inp, outputs=thread)
-        model.compile(optimizer=Adam(), loss='categorical_crossentropy', metrics=['accuracy'])
+    def _cifar_test(self):
+        self.dense_module_config = [{'out': 20, 'activation': 'relu'}]
+        self.depth = 3
+        self.width = 20
+        self.max_modules_pr_layer = 5
 
-        self._models_created_in_current_session +=1
-        self._saved_layers = {}
-        for n in self.path2layer_names([list(range(self.width))]*self.depth):
-            self._saved_layers[n] = model.get_layer(n)
+        pnc = PathNetConstructor([32, 32, 3])
+        pnc.add_dense_layer(self.width, self.dense_module_config)
+        pnc.add_dense_layer(self.width, self.dense_module_config)
+        pnc.add_dense_layer(self.width, self.dense_module_config)
 
-    def load_weights_to_model(self, model):
-        for name, layer in self.weights.items():
-            if model.get_layer(name) is not None:
-                model.get_layer(name).set_weights(layer.get_weights())
+        self.pathnet_dimentions = [1, 1, 1]
+
+        self._saved_layers = pnc.get_layers()
 
     def path2layer_names(self, path):
         names = []
@@ -95,7 +121,7 @@ class PathNet:
                         names.append(prefix+'BN')
         return names
 
-    def path2model(self, path, optimizer='adam', loss='categorical_crossentropy'):
+    def path2model(self, path, task_nr=0):
         self._models_created_in_current_session += 1
         if self._models_created_in_current_session >= self._max_active_modules:
             self.reset_backend_session()
@@ -103,52 +129,46 @@ class PathNet:
         inp = Input(self.input_shape)
         thread = inp
 
-        for l, active_modules in enumerate(path):
+        for l in range(self.depth):
+            layer_prefix = 'L'+str(l)
             layer_outputs = []
-            for m in active_modules:
-                module_thread = thread
-                if l == self.depth-1:
-                    for d in range(len(self.dense_module_config)):
-                        name = self._name(l, m, d, 'D')
-                        module_thread = self._saved_layers[name](module_thread)
-                else:
-                    for c in range(len(self.conv_module_config)):
-                        name = self._name(l, m, c, 'C')
-                        module_thread = self._saved_layers[name](module_thread)
-                    if self.conv_module_includes_batchnorm:
-                        name = self._name(l, m, 0, 'BN')
-                        module_thread = self._saved_layers[name](module_thread)
-                layer_outputs.append(module_thread)
 
-            if len(layer_outputs) == 1:
-                thread = layer_outputs[0]
-            else:
-                thread = add(layer_outputs)
-
-            if l == self.depth-2:
-                thread = MaxPooling2D((2, 2))(thread)
+            if self.flatten_placement == l:
                 thread = Flatten()(thread)
 
-        m = Model(inputs=inp, outputs=thread)
-        m.compile(optimizer=optimizer, loss=loss, metrics=['accuracy'])
+            for m in path[l]:
+                module_prefix = 'M'+str(m)
+                module_thread = thread
 
-        return m
+                for n in range(self.pathnet_dimentions[l]):
+                    layer = None
+                    if layer_prefix+module_prefix+'D'+str(n) in self._saved_layers.keys():
+                        layer = self._saved_layers[layer_prefix+module_prefix+'D'+str(n)]
+                    elif layer_prefix+module_prefix+'C'+str(n) in self._saved_layers.keys():
+                        layer = self._saved_layers[layer_prefix+module_prefix+'C'+str(n)]
 
-    def _build_dense_module(self, layer_index, module_index, module_input):
-        thread = module_input
-        for n, node in enumerate(self.dense_module_config):
-            thread = Dense(node['out'], activation=node['activation'],
-                            name=self._name(layer_index, module_index, n, 'D'))(thread)
-        return thread
+                    module_thread = layer(module_thread)
 
-    def _build_conv_module(self, layer_index, module_index, module_input):
-        thread = module_input
-        for n, node in enumerate(self.conv_module_config):
-            thread = Conv2D(node['channels'], node['kernel'], activation=node['activation'],
-                            name=self._name(layer_index, module_index, n, 'C'))(thread)
-        if self.conv_module_includes_batchnorm:
-            thread = BatchNormalization(name=self._name(layer_index, module_index, 0, 'BN'))(thread)
-        return thread
+                if layer_prefix+module_prefix+'BN' in self._saved_layers.keys():
+                    module_thread = self._saved_layers[layer_prefix+module_prefix+'BN'](module_thread)
+
+                layer_outputs.append(module_thread)
+
+            if len(layer_outputs) > 1:
+                thread = add(layer_outputs)
+            else:
+                thread = layer_outputs[0]
+
+            if self.maxpool_placement == l:
+                thread = MaxPooling2D((2, 2))(thread)
+
+        thread = self.unique_classification_layer[task_nr](thread)
+
+        model = Model(inputs=inp, outputs=thread)
+        optimizer = self.optimizer_type(lr=self.learning_rate)
+        model.compile(optimizer=optimizer, loss=self.loss, metrics=['accuracy'])
+
+        return model
 
     def _lock_modules_from_training(self, path):
         for name in self.path2layer_names(path):
@@ -192,6 +212,7 @@ class PathNet:
         if min < 1:
             min = 1
 
+        max = self.max_modules_pr_layer
         path = []
         for _ in range(self.depth):
             contenders = list(range(self.width))
@@ -220,7 +241,8 @@ class PathNet:
             'depth': self.depth,
             'width': self.width,
             'in_shape': self.input_shape,
-            'out_size': self.output_size,
+            'out_sizes': self.output_sizes,
+            'unique_classification_weights': self.unique_classification_weights,
             'training_counter': self.training_counter,
             'dense_module_config': self.dense_module_config,
             'conv_module_config': self.conv_module_config,
@@ -229,19 +251,21 @@ class PathNet:
             'weights': weights
             }
 
-        with open('logs/log_dict.pkl', 'wb') as f:
+        now = datetime.now()
+        with open('logs/PNstate '+str(now)[:16]+'.pkl', 'wb') as f:
             pickle.dump(log, f)
 
-    def load_pathnet(self):
+    def load_pathnet(self, filename):
         log = None
-        with open('logs/log_dict.pkl', 'rb') as f:
+        with open('logs/'+filename, 'rb') as f:
             log = pickle.load(f)
 
         self.optimal_paths = log['optimal_paths']
         self.depth = log['depth']
         self.width = log['width']
         self.input_shape = log['in_shape']
-        self.output_size = log['out_size']
+        self.output_sizes = log['out_sizes']
+        self.unique_classification_weights = log['unique_classification_weights']
         self.training_counter = log['training_counter']
         self.dense_module_config = log['dense_module_config']
         self.conv_module_config = log['conv_module_config']
@@ -287,7 +311,11 @@ class PathNet:
         print('==> Reseting backend session')
         weights = {}
         trainable = {}
-        t = time.time()
+
+        unique_weights = []
+        for w in self.unique_classification_layer:
+            unique_weights.append(w.get_weights())
+
         for name, layer in self._saved_layers.items():
                 weights[name] = layer.get_weights()
                 trainable[name] = layer.trainable
@@ -296,6 +324,14 @@ class PathNet:
         self._models_created_in_current_session = 0
         self._init_whole_pathnet()
 
+        self.unique_classification_layer = []
+        for ind, weights in enumerate(unique_weights):
+            layer = Dense(self.output_sizes[ind], activation='softmax')
+            layer.set_weights(weights)
+            self.unique_classification_layer.append(layer)
+
         for name, layer in self._saved_layers.items():
             layer.set_weights(weights[name])
             layer.trainable = trainable[name]
+
+
