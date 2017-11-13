@@ -1,4 +1,4 @@
-from pathnet_keras import PathNet
+from analytic import Analytic
 import numpy as np
 import random
 import time
@@ -107,49 +107,69 @@ class PathSearch:
 
         return champion_path, fitness_history
 
-    def binary_mnist_tournamet_search(self, x, y, task_nr=0):
+    def binary_mnist_tournamet_search(self, x, y, task=None, stop_when_reached=0.99):
         batch_size = 16
         training_iterations = 50
-        population = [self.pathnet.random_path(min=1, max=3) for _ in range(64)]
+        population_size = 16
+        population = [self.pathnet.random_path(min=1, max=3) for _ in range(population_size)]
         generation = 0
+
+        log = {'path':[], 'fitness':[], 'avg_training':[]}
+
+        if task is None: task = self.pathnet._tasks[-1]
 
         while True:
 
             path_a = random.choice(population)
             path_b = random.choice(population)
-            if path_a == path_b: continue
 
             generation += 1
 
             print('='*15, 'Generation', generation, '='*15)
-            print(path_a, '\tVs.', path_b, sep='\n')
 
-            a = self.pathnet.path2model(path_a, task_nr=task_nr)
-            b = self.pathnet.path2model(path_b, task_nr=task_nr)
-            fit_a = 0
-            fit_b = 0
+            a = self.pathnet.path2model(path_a, task=task)
+            b = self.pathnet.path2model(path_b, task=task, stop_session_reset=True)
+            fit_a = 0.0
+            a_hist = []
+            fit_b = 0.0
+            b_hist = []
             for batch_nr in range(training_iterations):
                 batch = np.random.randint(0, len(x), batch_size)
                 batch_x = x[batch]
                 batch_y = y[batch]
-                fit_a = a.train_on_batch(batch_x, batch_y)[1]
-                fit_b = b.train_on_batch(batch_x, batch_y)[1]
+                a_result = a.train_on_batch(batch_x, batch_y)[1]
+                b_result = b.train_on_batch(batch_x, batch_y)[1]
+
+                fit_a += a_result
+                a_hist.append(a_result)
+                fit_b += b_result
+                b_hist.append(b_result)
 
             self.pathnet.increment_training_counter(path_a)
             self.pathnet.increment_training_counter(path_b)
 
             fit_a /= training_iterations
             fit_b /= training_iterations
-            print(path_a, '\t=>', fit_a)
-            print(path_b, '\t=>', fit_b)
+
+            log['path'].append([path_a.copy(), path_b.copy()])
+            log['fitness'].append([a_hist, b_hist])
+            _, avg_training_a = Analytic(self.pathnet).training_along_path(path_a)
+            _, avg_training_b = Analytic(self.pathnet).training_along_path(path_b)
+            log['avg_training'].append([avg_training_a, avg_training_b])
+
+
+            print(str(path_a).ljust(45) + str(fit_a), '\tVs.', str(path_b).ljust(45) + str(fit_b)+'\n',  sep='\n')
 
             if fit_a > fit_b:
                 population[population.index(path_b)] = self.mutate_path(path_a, 1/9)
-                if fit_a > 0.999:
-                    return path_a, fit_a
+                if fit_a > stop_when_reached:
+                    return path_a, fit_a, log
+            else:
+                population[population.index(path_a)] = self.mutate_path(path_b, 1 / 9)
+                if fit_b > stop_when_reached:
+                    return path_b, fit_b, log
 
-
-    def evolutionary_search(self, x, y, population_size=4, generations=2):
+    def evolutionary_search(self, x, y, task, population_size=4, generations=2):
         batch_size = 256
         epochs = 1
         max_modules_pr_layer = 3
@@ -163,7 +183,7 @@ class PathSearch:
             print('='*15, 'Generation ', generation, '/', generations, '='*15)
 
             print(' ' * 5, '--- Evaluating fitness of', population_size, 'paths ---')
-            fitness, hist = self.evaluate(population, x, y, epochs, batch_size)
+            fitness, hist = self.evaluate(population, x, y, task, epochs, batch_size)
             history.append(hist)
 
             population, fitness = self.sort_generation_by_fitness(population, fitness)
@@ -199,13 +219,16 @@ class PathSearch:
 
         return population[0], history
 
-    def evaluate(self, population, x, y, epochs, batch_size):
+    def evaluate(self, population, x, y, task, epochs, batch_size):
         fitness = []
         history = []
-        for path in population:
+        for nr, path in enumerate(population):
             t = time.time()
+            if nr == 0:
+                model = self.pathnet.path2model(path, task)
+            else:
+                model = self.pathnet.path2model(path, task, stop_session_reset=True)
 
-            model = self.pathnet.path2model(path)
             hist = model.fit(x, y, epochs=epochs, validation_split=0.2, verbose=True, batch_size=batch_size)
 
             self.time_log.append(time.time()-t / model.count_params())
@@ -307,7 +330,8 @@ class PathSearch:
         return mutated
 
     def mutate_path(self, path, mutation_prob=0.1):
-        for layer in path.copy():
+        mutated_path = path.copy()
+        for layer in mutated_path:
             for i in range(len(layer)):
                 if np.random.uniform(0, 1) <= mutation_prob:
                     layer[i] += np.random.randint(low=-2, high=2)
@@ -316,10 +340,10 @@ class PathSearch:
                     if layer[i] >= self.pathnet.depth:
                         layer[i] -= self.pathnet.depth
         for i in range(self.pathnet.depth):
-            path[i] = list(set(path[i]))
-            path[i] = sorted(path[i])
+            mutated_path[i] = list(set(mutated_path[i]))
+            mutated_path[i] = sorted(mutated_path[i])
 
-        return path
+        return mutated_path
 
     def sort_generation_by_fitness(self, population, fitness):
         fitness, population = zip(*list(reversed(sorted(list(zip(fitness, population))))))

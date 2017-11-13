@@ -84,8 +84,24 @@ class Analytic:
 
         return {'loss':loss, 'acc':acc, 'val_loss':val_loss, 'val_acc':val_acc}
 
+    def training_along_path(self, p):
+        modules_training_log = []
+        total = 0
+        number_of_modules_in_path = 0
+        for layer in range(self.pathnet.depth):
+            l = []
+            for module in p[layer]:
+                l.append(self.pathnet.training_counter[layer][module])
+                total += self.pathnet.training_counter[layer][module]
+                number_of_modules_in_path += 1
+            modules_training_log.append(l)
+        return modules_training_log, total/number_of_modules_in_path
+
     def show_optimal_paths(self):
-        for i, p in enumerate(self.pathnet.optimal_paths):
+        for i, t in enumerate(self.pathnet._tasks):
+            p = t.optimal_path
+            if p is None: continue
+
             print('='*20, 'Task nr'+str(i+1), '='*20)
             print('Path:')
             print(p)

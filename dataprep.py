@@ -127,4 +127,9 @@ class DataPrep:
         y = y[:, ~np.all(y == 0, axis=0)]
         y_test = y_test[:, ~np.all(y_test == 0, axis=0)]
 
+        '''
+        if y.shape[1] == 2:
+            y = y[:, 0]
+            y_test = y_test[:, 0]
+        '''
         return x, y, x_test, y_test
