@@ -84,15 +84,17 @@ class Analytic:
 
         return {'loss':loss, 'acc':acc, 'val_loss':val_loss, 'val_acc':val_acc}
 
-    def training_along_path(self, p):
+    @staticmethod
+    def training_along_path(p, training_counter):
+
         modules_training_log = []
         total = 0
         number_of_modules_in_path = 0
-        for layer in range(self.pathnet.depth):
+        for layer in range(len(p)):
             l = []
             for module in p[layer]:
-                l.append(self.pathnet.training_counter[layer][module])
-                total += self.pathnet.training_counter[layer][module]
+                l.append(training_counter[layer][module])
+                total += training_counter[layer][module]
                 number_of_modules_in_path += 1
             modules_training_log.append(l)
         return modules_training_log, total/number_of_modules_in_path
@@ -123,18 +125,10 @@ class Analytic:
             print('\n')
 
     def _is_module_trainable(self, layer, module):
-        prefix = 'L'+str(layer)+'M'+str(module)
+        return self.pathnet._layers[layer].is_module_trainable(module)
 
-        for name, layer in self.pathnet._saved_layers.items():
-            if prefix in name:
-                return layer.trainable
     def _module_size(self, layer, module):
-        prefix = 'L'+str(layer)+'M'+str(module)
-        counter = 0
-        for name, layer in self.pathnet._saved_layers.items():
-            if prefix in name:
-                counter+=1
-        return counter
+        return len(self.pathnet._layers[layer]._modules[module])
 
     def show_locked_modules(self):
         pn = self.pathnet
@@ -173,6 +167,57 @@ class Analytic:
             print(k)
 
         self.plot_history(log)
+
+    def _usefull_training_ratio(self, optimal_path, training_counter):
+        training_along_path, avg_for_path = self.training_along_path(optimal_path, training_counter)
+        number_of_modules = 0
+        for layer in optimal_path:
+            number_of_modules += len(layer)
+
+        usefull_training = avg_for_path*number_of_modules
+        total_training = 0
+        for l in training_counter:
+            for m in l:
+                total_training+=m
+
+        return usefull_training/total_training
+
+    def build_metrics(self, training_counter, optimal_path, log):
+        metrics = {}
+        metrics['usefull_ratio'] = self._usefull_training_ratio(optimal_path, training_counter)
+
+        metrics['fitness'] = []
+        metrics['# modules'] = []
+        metrics['avg_training / # modules'] = []
+        for p, f, t in zip(log['path'], log['fitness'], log['avg_training']):
+            path_a, path_b = p
+            fit_a,  fit_b  = f
+            avg_a,  avg_b  = t
+
+            metrics['fitness'].append(sum(fit_a)/len(fit_a))
+            metrics['fitness'].append(sum(fit_b)/len(fit_b))
+            for path in p:
+                number_of_modules = 0
+                for layer in path:
+                    number_of_modules += len(layer)
+                metrics['# modules'].append(number_of_modules)
+
+            metrics['avg_training / # modules'] = avg_a / metrics['# modules'][-2]
+            metrics['avg_training / # modules'] = avg_b / metrics['# modules'][-1]
+
+        return metrics
+
+    @staticmethod
+    def path_overlap(p1, p2):
+        counter = 0
+
+        for l1, l2 in zip(p1, p2):
+            for m in l1:
+                if m in l2:
+                    counter += 1
+
+        return counter
+
 
 if __name__ == "__main__":
     Analytic(None).load_log()

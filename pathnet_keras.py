@@ -15,7 +15,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 class PathNet:
-    def __init__(self, input_shape=None, width=-1, depth=-1, max_active_modules=75):
+    def __init__(self, input_shape=None, width=-1, depth=-1, max_active_modules=30):
         self._models_created_in_current_session = 0
         self._max_active_modules = max_active_modules
 
@@ -58,7 +58,21 @@ class PathNet:
         pathnet._tasks = [task]
         pathnet.max_modules_pr_layer = max_modules_pr_layer
 
+        for layer in pathnet._layers:
+            layer.save_initialized_weights()
+
         return pathnet, task
+
+    def create_new_task(self, config=None, like_this=None):
+        if like_this is not None:
+            new = like_this.create_task_like_this()
+        elif config is not None:
+            new = TaskContainer(config['input'], config['output'], config['name'],
+                                config['optim'], config['loss'], config['lr'])
+        else: assert False, 'PathNet:create_new_task(): Borth param is None'
+
+        self._tasks.append(new)
+        return new
 
     def path2layer_names(self, path):
         names = []
@@ -126,7 +140,8 @@ class PathNet:
     def increment_training_counter(self, path):
         for layer in range(self.depth):
             for module in path[layer]:
-                self.training_counter[layer][module]+=1
+                if self._layers[layer].is_module_trainable(module):
+                    self.training_counter[layer][module] += 1
 
     def train_path(self, x, y, path=None, epochs=5, batch_size=64, verbose=True, model=None, validation_split=0.2):
         if path is None:
@@ -143,8 +158,8 @@ class PathNet:
 
         return model, path, hist.history
 
-    def evaluate_path(self, x, y, path):
-        model = self.path2model(path)
+    def evaluate_path(self, x, y, path, task):
+        model = self.path2model(path, task)
         predictions = model.predict(x)
 
         hit = 0
@@ -158,7 +173,7 @@ class PathNet:
         return hit/(hit+miss)
 
     def reset_backend_session(self):
-        print('==> Reseting backend session')
+        #print('==> Reseting backend session')
         for layer in self._layers:
             layer.save_layer_weights()
 
@@ -178,7 +193,7 @@ class PathNet:
         for task in self._tasks:
             task.load_layer_weights()
 
-        self._models_created_in_current_session =1 +len(self._tasks)
+        self._models_created_in_current_session = 1 +len(self._tasks)
 
     def save_pathnet(self):
         layer_logs = []

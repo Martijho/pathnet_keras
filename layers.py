@@ -4,6 +4,7 @@ from keras.layers.merge import add
 from keras.optimizers import Adagrad, Adam, RMSprop, SGD
 import numpy as np
 import os
+import copy
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 class Layer:
@@ -60,6 +61,9 @@ class DenseLayer(Layer):
 
             self._modules.append(module)
 
+    def is_module_trainable(self, module):
+        return self._modules[module][0].trainable
+
     def add_layer_selection(self, active_modules, thread):
 
         if self._flatten_first:
@@ -91,13 +95,21 @@ class DenseLayer(Layer):
                 node.set_weights(self._saved_weights[node.name])
                 node.trainable = self._saved_trainable_state[node.name]
 
-    def reinitialize_if_open(self):
+    def save_initialized_weights(self):
+        self._initialized_weights = {}
+        for name, layer in self._layers.items():
+            self._initialized_weights[name] = copy.deepcopy(layer.get_weights())
+
+    def reinitialize_if_open(self, from_initialized_state=True):
         for name, layer in self._layers.items():
             if layer.trainable:
-                layer.set_weights([
-                        np.random.normal(0, 0.5, size=layer.get_weights()[0].shape),
-                        np.zeros_like(layer.get_weights()[1])
-                    ])
+                if from_initialized_state:
+                    layer.set_weights(self._initialized_weights[name])
+                else:
+                    layer.set_weights([
+                            np.random.normal(0, 0.5, size=layer.get_weights()[0].shape),
+                            np.zeros_like(layer.get_weights()[1])
+                        ])
 
     def load_layer_log(self, log):
         for i in range(len(self._modules)):
@@ -156,7 +168,6 @@ class TaskContainer:
 
         if self._pathnet_output_size is None:
             self._pathnet_output_size = self.layer.input_shape
-
 
     def load_layer_weights(self):
         self.layer = Dense(self.output_size, activation='softmax', name=self.name)
