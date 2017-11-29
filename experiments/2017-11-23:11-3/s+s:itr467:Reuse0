@@ -1,0 +1,73 @@
+// example
+digraph {
+	graph [nodesep=0.5 rank=same splines=line]
+	node [style=filled]
+	edge [dir=none penwidth=3]
+	L0M0 [label=0 color=lightgray]
+	L0M1 [label=91 color="#df5454"]
+	L0M2 [label=116 color="#df5454"]
+	L0M3 [label=158 color="#df5454"]
+	L0M4 [label=0 color=lightgray]
+	L0M5 [label=0 color=lightgray]
+	L0M6 [label=0 color=lightgray]
+	L0M7 [label=45 color="#740040"]
+	L0M8 [label=0 color=lightgray]
+	L0M9 [label=0 color=lightgray]
+	L1M0 [label=0 color=lightgray]
+	L1M1 [label=44 color="#740040"]
+	L1M2 [label=0 color=lightgray]
+	L1M3 [label=0 color=lightgray]
+	L1M4 [label=35 color="#740040"]
+	L1M5 [label=0 color=lightgray]
+	L1M6 [label=0 color=lightgray]
+	L1M7 [label=103 color="#df5454"]
+	L1M8 [label=0 color=lightgray]
+	L1M9 [label=0 color=lightgray]
+	L2M0 [label=0 color=lightgray]
+	L2M1 [label=0 color=lightgray]
+	L2M2 [label=134 color="#df5454"]
+	L2M3 [label=0 color=lightgray]
+	L2M4 [label=40 color="#740040"]
+	L2M5 [label=70 color="#df5454"]
+	L2M6 [label=0 color=lightgray]
+	L2M7 [label=0 color=lightgray]
+	L2M8 [label=39 color="#740040"]
+	L2M9 [label=82 color="#df5454"]
+	sum_0 [label=sum color=grey]
+	sum_1 [label=sum color=grey]
+	sum_2 [label=sum color=grey]
+	L0M7 -> sum_0 [color="#740040"]
+	sum_0 -> L1M1 [color="#740040"]
+	sum_0 -> L1M4 [color="#740040"]
+	L1M1 -> sum_1 [color="#740040"]
+	L1M4 -> sum_1 [color="#740040"]
+	sum_1 -> L2M8 [color="#740040"]
+	L2M8 -> sum_2 [color="#740040"]
+	sum_1 -> L2M4 [color="#740040"]
+	L2M4 -> sum_2 [color="#740040"]
+	L0M1 -> sum_0 [color="#df5454"]
+	L0M2 -> sum_0 [color="#df5454"]
+	L0M3 -> sum_0 [color="#df5454"]
+	sum_0 -> L1M7 [color="#df5454"]
+	L1M7 -> sum_1 [color="#df5454"]
+	sum_1 -> L2M9 [color="#df5454"]
+	L2M9 -> sum_2 [color="#df5454"]
+	sum_1 -> L2M2 [color="#df5454"]
+	L2M2 -> sum_2 [color="#df5454"]
+	sum_1 -> L2M5 [color="#df5454"]
+	L2M5 -> sum_2 [color="#df5454"]
+	{rank = same; L0M0 L1M0 L2M0}
+	{rank = same; L0M1 L1M1 L2M1}
+	{rank = same; L0M2 L1M2 L2M2}
+	{rank = same; L0M3 L1M3 L2M3}
+	{rank = same; L0M4 L1M4 L2M4}
+	{rank = same; L0M5 L1M5 L2M5}
+	{rank = same; L0M6 L1M6 L2M6}
+	{rank = same; L0M7 L1M7 L2M7}
+	{rank = same; L0M8 L1M8 L2M8}
+	{rank = same; L0M9 L1M9 L2M9}
+	{rank = same; sum_0 sum_1 sum_2 L0M5}
+	L0M0 -> L0M1 -> L0M2 -> L0M3 -> L0M4 -> L0M5 -> L0M6 -> L0M7 -> L0M8 -> L0M9[ style = invis, weight = 100 ];
+	L1M0 -> L1M1 -> L1M2 -> L1M3 -> L1M4 -> L1M5 -> L1M6 -> L1M7 -> L1M8 -> L1M9[ style = invis, weight = 100 ];
+	L2M0 -> L2M1 -> L2M2 -> L2M3 -> L2M4 -> L2M5 -> L2M6 -> L2M7 -> L2M8 -> L2M9[ style = invis, weight = 100 ];
+}
