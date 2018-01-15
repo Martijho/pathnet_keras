@@ -218,6 +218,20 @@ class Analytic:
 
         return counter
 
+    @staticmethod
+    def three_path_overlap(p1, p2, p3):
+        reuse = [0, 0, 0]
+        reuse[0] = Analytic.path_overlap(p1, p2)
+
+        for i in range(len(p1)):
+
+            for m in p3[i]:
+                if m in p1[i]:
+                    reuse[1]+=1
+                elif m in p2[i]:
+                    reuse[2]+=1
+
+        return reuse
 
 if __name__ == "__main__":
     Analytic(None).load_log()

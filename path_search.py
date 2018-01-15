@@ -108,13 +108,26 @@ class PathSearch:
 
         return champion_path, fitness_history
 
-    def binary_mnist_tournamet_search(self, x, y, task=None, stop_when_reached=0.99):
-        batch_size = 16
-        training_iterations = 50
-        population_size = 64
+    def tournamet_search(self, x, y, task=None, stop_when_reached=0.99, hyperparam=None):
+        if hyperparam is None:
+            batch_size          = 16
+            training_iterations = 50
+            population_size     = 64
+        else:
+            batch_size          = hyperparam['batch_size']
+            training_iterations = hyperparam['training_iterations']
+            population_size     = hyperparam['population_size']
+
+        if 'generation_limit' in hyperparam.keys():
+            generation_limit = hyperparam['generation_limit']
+        else:
+            generation_limit = 500
+
         population = [self.pathnet.random_path() for _ in range(population_size)]
         fitness = [' ']*population_size
         generation = 0
+        t_start = 0
+        t_stop = 0
 
         log = {'path':[], 'fitness':[], 'avg_training':[]}
 
@@ -127,12 +140,13 @@ class PathSearch:
 
 
 
-            while generation < 500:
+            while generation < generation_limit:
+
                 generation += 1
 
 
-                output_lines[0] = output_lines[0] = '='*15+' Generation '+str(generation)+' ' + '='*15
-
+                output_lines[0] = output_lines[0] = '='*15+' Generation '+str(generation)+' ' + '='*15 + '\t' + str(t_stop-t_start)
+                t_start = time.time()
 
                 ind = random.sample(range(population_size), 2)
                 a, b = ind[0], ind[1]
@@ -181,7 +195,8 @@ class PathSearch:
                     w_ind, l_ind = b, a
 
 
-                if w_fit > stop_when_reached:
+                if w_fit >= stop_when_reached:
+                    for _ in range(3): output_lines.append(' ')
                     return winner, w_fit, log
 
                 fitness[w_ind] = w_fit
@@ -191,9 +206,11 @@ class PathSearch:
                 output_lines[w_ind+1] =  str(winner).ljust(45) + ('%.1f' % (w_fit*100))+' %'
                 output_lines[l_ind+1] = str(looser).ljust(45) + '\t'*3 + '['+str(w_fit)+']'
 
+                t_stop = time.time()
 
             max_fit = max(fitness)
             max_path = population[fitness.index(max_fit)]
+            for _ in range(3): output_lines.append(' ')
             return max_path, max_fit, log
 
     def evolutionary_search(self, x, y, task, population_size=4, generations=2):
@@ -369,6 +386,12 @@ class PathSearch:
                 layer.append((old_module + shift) % self.pathnet.width)
 
             layer = list(set(layer))
+
+            for m in old_layer:
+                if len(layer) == len(old_layer):
+                    break
+                if m not in layer:
+                    layer.append(m)
 
             mutated_path.append(layer)
 

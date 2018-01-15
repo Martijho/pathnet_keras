@@ -3,53 +3,64 @@ from dataprep import DataPrep
 from analytic import Analytic
 from path_search import PathSearch
 from plot_pathnet import PathNetPlotter
+import numpy as np
+from keras.models import Model
+from keras.layers import Dense, Input, Conv2D, MaxPooling2D, Flatten, BatchNormalization
+from keras.optimizers import Adagrad, Adam, RMSprop, SGD
+from keras.callbacks import TensorBoard
+from matplotlib import pyplot as plt
+
+
+def give_model(optim):
+    inp = Input([32, 32, 3])
+    thread = inp
+
+    for _ in range(1):
+        thread = Conv2D(2, (3, 3), activation='relu')(thread)
+        thread = Conv2D(2, (5, 5), activation='relu')(thread)
+        thread = BatchNormalization()(thread)
+
+    thread = MaxPooling2D((2, 2))(thread)
+    thread = Flatten()(thread)
+    thread = Dense(20, activation='relu')(thread)
+    thread = Dense(2, activation='softmax')(thread)
+
+    model = Model(inputs=inp, outputs=thread)
+    model.compile(optimizer=optim, loss='categorical_crossentropy', metrics=['accuracy'])
+    return model
+
+optim = RMSprop()
+epochs = 10
+batch_size = 16
 
 data = DataPrep()
-data.mnist()
-x1, y1, x_test1, y_test1 = data.sample_dataset([0, 5])
-x2, y2, x_test2, y_test2 = data.sample_dataset([2, 7])
+data.cifar10()
+x1, y1, x_test1, y_test1 = data.sample_dataset([0, 6])
+x2, y2, x_test2, y_test2 = data.sample_dataset([2, 3])
 
 
+model = give_model(optim)
+model.summary()
+log1 = model.fit(x1, y1, batch_size=batch_size, epochs=epochs, verbose=True, validation_data=[x_test1, y_test1]).history['val_acc']
+log2 = []
+model = give_model(optim)
+for e in range(epochs):
+    for i in range(int(round(len(x1)/batch_size))):
+        batch = np.random.randint(0, len(x1), batch_size)
+        model.train_on_batch(x1[batch], y1[batch])
 
-pathnet, task = PathNet.binary_mnist()
-pathsearch = PathSearch(pathnet)
-analytic = Analytic(pathnet)
-pathnet_plotter = PathNetPlotter(pathnet)
-paths_to_plot = []
+    pred = model.predict(x_test1)
+    hits = sum(np.argmax(pred, 1) == np.argmax(y_test1, 1))
+    test_acc = hits/len(x_test1)
+    log2.append(test_acc)
+    print(test_acc)
 
-print('\t\t\t\tTASK 1')
-optimal_path, _, _ = pathsearch.binary_mnist_tournamet_search(x1, y1, task, stop_when_reached=0.95)
-print(optimal_path)
-analytic.plot_training_counter(lock=False)
-pathnet.save_new_optimal_path(optimal_path, task)
+print(((e+1)*(i+1))/50, 'iterations/minibatches gives acc:', test_acc)
 
-###### TEST OPTIMAL PATH 1 #######
-print('Results on task 1')
-print(pathnet.evaluate_path(x_test1, y_test1, optimal_path, task))
-pathnet.path2model(optimal_path, task).summary()
-analytic.show_locked_modules()
-paths_to_plot.append(optimal_path)
-
-
-
-print('\t\t\t\tTASK 2')
-task = pathnet.create_new_task(like_this=task)
-optimal_path, _, _ = pathsearch.binary_mnist_tournamet_search(x2, y2, task, stop_when_reached=0.95)
-print(optimal_path)
-analytic.plot_training_counter()
-pathnet.save_new_optimal_path(optimal_path, task)
-
-print('Results on task 2')
-print(pathnet.evaluate_path(x_test2, y_test2, optimal_path, task))
-pathnet.path2model(optimal_path, task).summary()
-pathnet.save_new_optimal_path(optimal_path, task)
-paths_to_plot.append(optimal_path)
+plt.plot(log1)
+plt.plot(log2)
+plt.legend(['fit', 'train_on_batch'])
+plt.show()
 
 
-analytic.show_locked_modules()
-analytic.plot_training_counter()
-analytic.show_optimal_paths()
-
-
-pathnet_plotter.plot_paths(paths_to_plot)
 

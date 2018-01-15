@@ -1,14 +1,9 @@
 from keras.datasets import cifar10, cifar100, mnist
 from keras.utils import to_categorical
+from matplotlib import pyplot as plt
 import numpy as np
 import random
 
-'''
-for i, j in zip(x_test, y_test):
-    print(j)
-    plt.imshow(i.reshape([28, 28]), cmap='gray')
-    plt.show()
-'''
 
 class DataPrep:
     def __init__(self):
@@ -86,12 +81,15 @@ class DataPrep:
             self.x_test = self.x_test[:test_size]
 
     def get_class(self, label):
+        try:
+            training_indecies = list((self.y_list == label)[:,0])
+            validation_indecies = list((self.y_test_list == label)[:,0])
+        except IndexError:
+            training_indecies = self.y_list == label
+            validation_indecies = self.y_test_list == label
 
-        training_indecies = self.y_list == label
-        validation_indecies = self.y_test_list == label
-
-        return self.x[training_indecies,:,:], self.y[training_indecies, :], \
-               self.x_test[validation_indecies,:,:], self.y_test[validation_indecies, :]
+        return self.x[training_indecies], self.y[training_indecies], \
+               self.x_test[validation_indecies], self.y_test[validation_indecies]
 
     def shuffle_data(self, x, y, x_test, y_test):
         x = np.concatenate(x)
@@ -133,3 +131,29 @@ class DataPrep:
             y_test = y_test[:, 0]
         '''
         return x, y, x_test, y_test
+
+    def add_noise(self, noise_factor=0.5, prob=0.35):
+
+        N, wi, he, ch = self.x.shape
+        noise  = np.random.rand(N, wi, he, ch)
+        self.x[noise < prob] = 0                    # Pepper
+        self.x[noise < prob*noise_factor] = 255     # Salt
+
+        N, wi, he, ch = self.x_test.shape
+        noise = np.random.rand(N, wi, he, ch)
+        self.x_test[noise < prob] = 0                    # Pepper
+        self.x_test[noise < prob*noise_factor] = 255     # Salt
+
+
+
+if __name__ == "__main__":
+    data = DataPrep()
+    data.mnist()
+    plt.figure('Normal data')
+    plt.imshow(data.x[121].reshape([28, 28]), cmap='gray')
+    plt.show(block=False)
+
+    data.add_noise(noise_factor=0.5, prob=0.15)
+    plt.figure('Noisy data')
+    plt.imshow(data.x[121].reshape([28, 28]), cmap='gray')
+    plt.show(block=True)

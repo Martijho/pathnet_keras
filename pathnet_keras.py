@@ -4,7 +4,7 @@ from keras.optimizers import Adagrad, Adam, RMSprop, SGD
 from keras.callbacks import TensorBoard
 from keras import backend as K
 from datetime import datetime
-from layers import Layer, DenseLayer, TaskContainer
+from layers import Layer, DenseLayer, ConvLayer, TaskContainer
 import numpy as np
 import pickle
 import os
@@ -27,6 +27,7 @@ class PathNet:
         self.input_shape = input_shape
         self._layers = []
         self.max_modules_pr_layer = 2
+        self.min_modules_pr_layer = 1
 
     @staticmethod
     def binary_mnist():
@@ -63,13 +64,86 @@ class PathNet:
 
         return pathnet, task
 
+    @staticmethod
+    def mnist(output_size=10):
+        conv_config             = [{'channels': 1, 'kernel': (3, 3), 'stride': (1, 1), 'activation': 'relu'}]
+        config                  = [{'out': 20, 'activation': 'relu'}]
+        input_shape             = [28, 28, 1]
+        output_size             = output_size
+        depth                   = 3
+        width                   = 10
+        max_modules_pr_layer    = 3
+        min_modules_pr_layer    = 1
+        learning_rate           = 0.0001
+        optimizer_type          = Adam
+        loss                    = 'categorical_crossentropy'
+        flatten_in_unique       = True
+
+        layers = []
+        #layers.append(DenseLayer(width, 'L0', config, flatten=not flatten_in_unique))
+        #layers.append(DenseLayer(width, 'L1', config))
+        #layers.append(DenseLayer(width, 'L2', config))
+        layers.append(ConvLayer(width, 'L0', conv_config))
+        layers.append(ConvLayer(width, 'L1', conv_config))
+        layers.append(ConvLayer(width, 'L2', conv_config, maxpool=True))
+
+        Layer.initialize_whole_network(layers, input_shape)
+
+        task = TaskContainer(input_shape, output_size, flatten_in_unique, name='unique_mnist',
+                             optimizer=optimizer_type, loss=loss, lr=learning_rate)
+
+        pathnet = PathNet(input_shape=input_shape, width=width, depth=depth, max_active_modules=20)
+        pathnet._layers = layers
+        pathnet._tasks = [task]
+        pathnet.max_modules_pr_layer = max_modules_pr_layer
+        pathnet.min_modules_pr_layer = min_modules_pr_layer
+
+        for layer in pathnet._layers:
+            layer.save_initialized_weights()
+
+        return pathnet, task
+
+    @staticmethod
+    def cifar10():
+        conv_config  = [{'channels': 3, 'kernel': (3, 3), 'stride': (1, 1), 'activation': 'relu'}]
+        dense_config = [{'out': 20, 'activation': 'relu'}]
+        input_shape = [32, 32, 3]
+        output_size = 10
+        depth = 3
+        width = 10
+        max_modules_pr_layer = 3
+        learning_rate = 0.001
+        optimizer_type = Adam
+        loss = 'categorical_crossentropy'
+
+        layers = []
+        layers.append(ConvLayer(width, 'L0', conv_config))
+        layers.append(ConvLayer(width, 'L1', conv_config))
+        layers.append(ConvLayer(width, 'L2', conv_config, maxpool=True))
+        #layers.append(DenseLayer(width, 'L2', dense_config, flatten=True))
+
+        Layer.initialize_whole_network(layers, input_shape)
+
+        task = TaskContainer(input_shape, output_size, True, name='unique_cifar10',
+                             optimizer=optimizer_type, loss=loss, lr=learning_rate)
+
+        pathnet = PathNet(input_shape=input_shape, width=width, depth=depth)
+        pathnet._layers = layers
+        pathnet._tasks = [task]
+        pathnet.max_modules_pr_layer = max_modules_pr_layer
+
+        for layer in pathnet._layers:
+            layer.save_initialized_weights()
+
+        return pathnet, task
+
     def create_new_task(self, config=None, like_this=None):
         if like_this is not None:
             new = like_this.create_task_like_this()
         elif config is not None:
-            new = TaskContainer(config['input'], config['output'], config['name'],
-                                config['optim'], config['loss'], config['lr'])
-        else: assert False, 'PathNet:create_new_task(): Borth param is None'
+            new = TaskContainer(config['input'], config['output'], config['flatten_first'], config['name'],
+                                config['optim'], config['lr'], config['loss'])
+        else: assert False, 'PathNet:create_new_task(): Both params are None'
 
         self._tasks.append(new)
         return new
@@ -96,7 +170,11 @@ class PathNet:
         output = task.add_unique_layer(thread)
 
         model = Model(inputs=inp, outputs=output)
-        model.compile(optimizer=task.optimizer(task.learningrate), loss=task.loss, metrics=['accuracy'])
+        if task.optimizer == Adagrad or task.optimizer == Adam or task.optimizer == RMSprop:
+            optim = task.optimizer()
+        else:
+            optim = task.optimizer(task.learningrate)
+        model.compile(optimizer=optim, loss=task.loss, metrics=['accuracy'])
 
         return model
 
@@ -126,6 +204,7 @@ class PathNet:
             min = 1
 
         max = self.max_modules_pr_layer
+        min = self.min_modules_pr_layer
         path = []
         for _ in range(self.depth):
             contenders = list(range(self.width))
@@ -158,8 +237,9 @@ class PathNet:
 
         return model, path, hist.history
 
-    def evaluate_path(self, x, y, path, task):
-        model = self.path2model(path, task)
+    def evaluate_path(self, x, y, path=None, task=None, model=None):
+        if model is None:
+            model = self.path2model(path, task)
         predictions = model.predict(x)
 
         hit = 0
@@ -210,6 +290,7 @@ class PathNet:
             'in_shape': self.input_shape,
             'training_counter': self.training_counter,
             'max_modules_pr_layer': self.max_modules_pr_layer,
+            'min_modules_pr_layer': self.min_modules_pr_layer,
             'layer_logs': layer_logs,
             'task_logs': task_logs
             }
@@ -229,6 +310,9 @@ class PathNet:
         for layer_log in log['layer_logs']:
             if layer_log['layer_type'] == 'dense':
                 layers.append(DenseLayer.build_from_log(layer_log))
+            if layer_log['layer_type'] == 'conv':
+                layers.append(ConvLayer.build_from_log(layer_log))
+
         Layer.initialize_whole_network(layers, log['in_shape'])
         for layer, layer_log in zip(layers, log['layer_logs']):
             layer.load_layer_log(layer_log)
@@ -237,6 +321,7 @@ class PathNet:
         pathnet._layers = layers
         pathnet.training_counter = log['training_counter']
         pathnet.max_modules_pr_layer = log['max_modules_pr_layer']
+        pathnet.min_modules_pr_layer = log['min_modules_pr_layer']
 
         tasks = []
         for task_log in log['task_logs']:
